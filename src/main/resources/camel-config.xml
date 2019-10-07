@@ -20,7 +20,6 @@
                                         sslKeyPassword={{sslKeyPassword}}&amp;
                                         securityProtocol=SSL"/>
             -->
-            <to uri="kafka:events_101?brokers={{kafkaInitHost}}:{{kafkaInitPort}}"/>
             <filter>
                 <!--
                 we're expecting some json of the rough form
@@ -37,6 +36,7 @@
                 we deep search with .. here, but the expression could do whatever really...
                 -->
                 <jsonpath>$..*[?(@.groupID == 101)]</jsonpath>
+                <to uri="kafka:events_101?brokers={{kafkaInitHost}}:{{kafkaInitPort}}"/>
                 <to uri="log:org.spikes?level=DEBUG" />
 
                 <!--region SSL Config

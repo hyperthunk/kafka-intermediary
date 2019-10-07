@@ -2,6 +2,7 @@ package org.spikes.test;
 
 import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
+import org.apache.camel.RoutesBuilder;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.kafka.KafkaConstants;
 import org.apache.camel.component.mock.MockEndpoint;
@@ -18,6 +19,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.testcontainers.containers.Container;
 import org.testcontainers.containers.KafkaContainer;
 
+import java.util.List;
 import java.util.Properties;
 
 public class KafkaIntermediaryIT extends CamelTestSupport {
@@ -130,9 +132,9 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
     // we provide a camel route for this test, which will consume data from
     // the output topic on which we're expected to see our filtered json data appear
 
-    private MockEndpoint addTestRoutes() {
-        try {
-            new RouteBuilder() {
+    @Override
+    protected RoutesBuilder createRouteBuilder() throws Exception {
+        return new RouteBuilder() {
                 @Override
                 public void configure() {
                     onException(Exception.class)
@@ -141,8 +143,9 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
 
                     from("direct:start")
                             .routeId("test-to-kafka")
-                            .setBody(constant(INPUT_JSON))
-                            .to(getAllEventsURI()) // .to("log:org.spikes?level=DEBUG")
+                            // .setBody(constant(INPUT_JSON))
+                            .to(getAllEventsURI())
+                            // .to("log:org.spikes?level=DEBUG")
                             .end();
 
                     from(getEvents101URI() +
@@ -159,12 +162,16 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
                             .to(MOCK_VISIBLE_EVENTS)
                             .end();
                 }
-            }.addRoutesToCamelContext(context());
-            return context().getEndpoint(MOCK_VISIBLE_EVENTS, MockEndpoint.class);
-        } catch (Exception e) {
-            fail(e.getMessage());
-        }
-        return null;
+            };
+    }
+
+    @NotNull
+    private String makeBody(final String appName, final String groupId) {
+        return "{deployment: {appid:'"
+                + appName
+                + "', groupID: "
+                + groupId
+                + ", properties: []}}";
     }
 
     private String dumpKafkaDetails(Exchange exchange) {
@@ -186,14 +193,20 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
 
     @Test
     public void givenThreeInFivePrivateMessagesTwoAreVisible() throws InterruptedException {
-        MockEndpoint visibleEvents = addTestRoutes();
+        MockEndpoint visibleEvents = context().getEndpoint(MOCK_VISIBLE_EVENTS, MockEndpoint.class);
+
+        final List<String> bodies =
+                List.of(  makeBody("app1", "101")
+                        , makeBody("app2", "352")
+                        , makeBody("app3", "614")
+                        , makeBody("app4", "101")
+                        , makeBody("app5", "101"));
+
+        bodies.forEach(b -> { template().sendBody("direct:start", b); });
+
         // we expect our mock endpoint to receive 2 message exchanges
-        visibleEvents.expectedMessageCount(2);
-
-        // Exchange deployments =
-
-        template().send("direct:start", new DefaultExchange(context()));
-
+        visibleEvents.expectedMessageCount(3);
+        
                     /*.withProcessor(
                             exchange -> {
                                 exchange.getOut().setHeader(KafkaConstants.KEY, "deployments");

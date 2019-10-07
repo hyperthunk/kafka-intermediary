@@ -46,8 +46,6 @@ public class CamelRouteConfigTests extends CamelTestSupport {
     @Test
     public void givenInvalidGroupIdFilterShouldNotReturnBody() throws InterruptedException {
         final MockEndpoint mock = context().getEndpoint("mock:filtered", MockEndpoint.class);
-        final ArrayList<String> messageBodies = new ArrayList<>();
-
         final List<String> bodies =
                 List.of( makeBody("app1", "101")
                        , makeBody("app2", "352")
