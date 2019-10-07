@@ -6,6 +6,7 @@ import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.kafka.KafkaConstants;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.test.junit4.CamelTestSupport;
+import org.jboss.logging.Logger;
 import org.jetbrains.annotations.NotNull;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -20,6 +21,16 @@ import org.testcontainers.containers.KafkaContainer;
 import java.util.Properties;
 
 public class KafkaIntermediaryIT extends CamelTestSupport {
+
+    // because the implementation of 'getFirstMappedPort' in KafkaContainer
+    // is broken in respect of docker implementations on some platforms... :/
+    private static class TestKafkaContainer extends KafkaContainer {
+        public TestKafkaContainer(String confluentPlatformVersion) {
+            super(confluentPlatformVersion);
+        }
+
+        public Integer getBrokerPort() { return proxy.getFirstMappedPort(); }
+    }
 
     static final String TOPIC = "events_all";
     static final String CONFLUENT_PLATFORM_VERSION = "5.1.1";
@@ -49,19 +60,21 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
                     "]}";
 
     // kafka env
-    private static KafkaContainer kafka;
+    private static TestKafkaContainer kafka;
     private static ConfigurableApplicationContext intermediary;
 
     // before the test runs, we spin up kafka in a docker container
 
     @BeforeClass
     public static void setup() {
-        kafka = new KafkaContainer(CONFLUENT_PLATFORM_VERSION); //.withNetwork(network);
+        kafka = new TestKafkaContainer(CONFLUENT_PLATFORM_VERSION); //.withNetwork(network);
         kafka.start();
         assertTrue("Kafka Container Startup Failed",
                     kafka.isRunning());
+        /* unfortunately not implemented
         assertTrue("Kafka Container Health Check Failed",
                     kafka.isHealthy());
+        */
         createTopic();
         startIntermediary();
     }
@@ -72,8 +85,12 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
     }
 
     private static void startIntermediary() {
-        final String host = kafka.getTestHostIpAddress();
-        final Integer port = kafka.getFirstMappedPort();
+        final String bootstrapServers = kafka.getBootstrapServers();
+        Logger.getLogger(KafkaIntermediaryIT.class).debug("[IT] Kafka bootstrap brokers " + bootstrapServers);
+        final String host = kafka.getContainerIpAddress();
+        final Integer port = kafka.getBrokerPort();
+        Logger.getLogger(KafkaIntermediaryIT.class).debug("[IT] Kafka bootstrap addr=" + host +
+                                                          ", port=" + port.toString());
         SpringApplication application = new SpringApplication(MySpringBootApplication.class);
         Properties properties = new Properties();
         properties.put("kafkaInitHost", host);
@@ -134,12 +151,13 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
                 fluentTemplate()
                     .withProcessor(
                             exchange -> {
-                                exchange.getIn().setHeader(KafkaConstants.KEY, "deployments");
+                                exchange.getOut().setHeader(KafkaConstants.KEY, "deployments");
+                                exchange.getOut().setBody(INPUT_JSON);
                             })
                     .to(getKafkaProducerURI())
                     .send();
 
-        log.debug(deployments.getOut().getBody().toString());
+        log.debug(deployments.toString());
 
         // paying no attention to the order (as it's not the point of this test)
         // we assert the two visible objects we've seen
