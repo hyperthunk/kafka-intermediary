@@ -1,10 +1,11 @@
 package org.spikes.test;
 
 import org.apache.camel.Exchange;
-import org.apache.camel.RoutesBuilder;
+import org.apache.camel.LoggingLevel;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.kafka.KafkaConstants;
 import org.apache.camel.component.mock.MockEndpoint;
+import org.apache.camel.impl.DefaultExchange;
 import org.apache.camel.test.junit4.CamelTestSupport;
 import org.jboss.logging.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -14,7 +15,6 @@ import org.junit.Test;
 import org.spikes.MySpringBootApplication;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.core.env.ConfigurableEnvironment;
 import org.testcontainers.containers.Container;
 import org.testcontainers.containers.KafkaContainer;
 
@@ -32,10 +32,12 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
         public Integer getBrokerPort() { return proxy.getFirstMappedPort(); }
     }
 
-    static final String TOPIC = "events_all";
-    static final String CONFLUENT_PLATFORM_VERSION = "5.1.1";
+    private static final String TOPIC_ALL = "events_all";
+    private static final String TOPIC_101 = "events_101";
+    private static final String CONFLUENT_PLATFORM_VERSION = "5.1.1";
+    private static final String MOCK_VISIBLE_EVENTS = "mock:visibleEvents";
 
-    static final String INPUT_JSON =
+    private static final String INPUT_JSON =
             "{events: [" +
                     "{deployment: {" +
                           "appid: 'app1'" +
@@ -69,20 +71,13 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
     public static void setup() {
         kafka = new TestKafkaContainer(CONFLUENT_PLATFORM_VERSION); //.withNetwork(network);
         kafka.start();
-        assertTrue("Kafka Container Startup Failed",
-                    kafka.isRunning());
-        /* unfortunately not implemented
-        assertTrue("Kafka Container Health Check Failed",
-                    kafka.isHealthy());
-        */
-        createTopic();
+        assertTrue("Kafka Container Startup Failed", kafka.isRunning());
+        createTopics();
         startIntermediary();
     }
 
     @AfterClass
-    public static void teardown() {
-        intermediary.stop();
-    }
+    public static void teardown() { intermediary.stop(); }
 
     private static void startIntermediary() {
         final String bootstrapServers = kafka.getBootstrapServers();
@@ -99,14 +94,19 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
         intermediary = application.run();
     }
 
-    private static void createTopic() {
+    private static void createTopics() {
+        createTopic(TOPIC_ALL);
+        createTopic(TOPIC_101);
+    }
+
+    private static void createTopic(final String topic) {
         // the test kafka container uses an embedded zookeeper
         // confluent platform and Kafka compatibility 5.1.x <-> kafka 2.1.x
         // kafka 2.1.x requires --zookeeper, whilst later versions use --bootstrap-servers
         String createTopic =
                 String.format("/usr/bin/kafka-topics --create --zookeeper localhost:2181"
                             + " --replication-factor 1 --partitions 1 --topic %s",
-                        TOPIC);
+                        topic);
         try {
             final Container.ExecResult execResult =
                     kafka.execInContainer("/bin/sh", "-c", createTopic);
@@ -118,53 +118,98 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
     }
 
     @NotNull
-    private String getKafkaConsumerURI() {
+    private String getEvents101URI() {
         return "kafka:events_101?brokers=" + kafka.getBootstrapServers();
     }
 
     @NotNull
-    private String getKafkaProducerURI() {
-        return "kafka:" + TOPIC + "?brokers=" + kafka.getBootstrapServers();
+    private String getAllEventsURI() {
+        return "kafka:" + TOPIC_ALL + "?brokers=" + kafka.getBootstrapServers();
     }
 
     // we provide a camel route for this test, which will consume data from
     // the output topic on which we're expected to see our filtered json data appear
 
-    protected RoutesBuilder createRouteBuilder() throws Exception {
-        return new RouteBuilder() {
-            @Override
-            public void configure() {
-                from(getKafkaConsumerURI())
-                        .to("mock:visibleEvents")
-                        .end();
-            }
-        };
+    private MockEndpoint addTestRoutes() {
+        try {
+            new RouteBuilder() {
+                @Override
+                public void configure() {
+                    onException(Exception.class)
+                            .handled(false)
+                            .log(LoggingLevel.WARN, "${exception.message}");
+
+                    from("direct:start")
+                            .routeId("test-to-kafka")
+                            .setBody(constant(INPUT_JSON))
+                            .to(getAllEventsURI()) // .to("log:org.spikes?level=DEBUG")
+                            .end();
+
+                    from(getEvents101URI() +
+                            "&groupId=A1&consumersCount=1&breakOnFirstError=true&autoOffsetReset=earliest") // getKafkaConsumerURI()
+                            .routeId("test-from-kafka")
+                            .process(exchange -> {
+                                log.info(dumpKafkaDetails(exchange));
+                            })
+                            .log("Message received from Kafka : ${body}")
+                            .log("    on the topic ${headers[kafka.TOPIC]}")
+                            .log("    on the partition ${headers[kafka.PARTITION]}")
+                            .log("    with the offset ${headers[kafka.OFFSET]}")
+                            .log("    with the key ${headers[kafka.KEY]}")
+                            .to(MOCK_VISIBLE_EVENTS)
+                            .end();
+                }
+            }.addRoutesToCamelContext(context());
+            return context().getEndpoint(MOCK_VISIBLE_EVENTS, MockEndpoint.class);
+        } catch (Exception e) {
+            fail(e.getMessage());
+        }
+        return null;
+    }
+
+    private String dumpKafkaDetails(Exchange exchange) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Message Received from topic:").append(exchange.getIn().getHeader(KafkaConstants.TOPIC));
+        sb.append("\r\n");
+        sb.append("Message Received from partition:").append(exchange.getIn().getHeader(KafkaConstants.PARTITION));
+        sb.append(" with partition key:").append(exchange.getIn().getHeader(KafkaConstants.PARTITION_KEY));
+        sb.append("\r\n");
+        sb.append("Message offset:").append(exchange.getIn().getHeader(KafkaConstants.OFFSET));
+        sb.append("\r\n");
+        sb.append("Message last record:").append(exchange.getIn().getHeader(KafkaConstants.LAST_RECORD_BEFORE_COMMIT));
+        sb.append("\r\n");
+        sb.append("Message Received:").append(exchange.getIn().getBody());
+        sb.append("\r\n");
+
+        return sb.toString();
     }
 
     @Test
     public void givenThreeInFivePrivateMessagesTwoAreVisible() throws InterruptedException {
-        MockEndpoint visibleEvents = context().getEndpoint("mock:foo", MockEndpoint.class);
+        MockEndpoint visibleEvents = addTestRoutes();
         // we expect our mock endpoint to receive 2 message exchanges
         visibleEvents.expectedMessageCount(2);
 
-        Exchange deployments =
-                fluentTemplate()
-                    .withProcessor(
+        // Exchange deployments =
+
+        template().send("direct:start", new DefaultExchange(context()));
+
+                    /*.withProcessor(
                             exchange -> {
                                 exchange.getOut().setHeader(KafkaConstants.KEY, "deployments");
                                 exchange.getOut().setBody(INPUT_JSON);
                             })
                     .to(getKafkaProducerURI())
-                    .send();
+                    .send();*/
 
-        log.debug(deployments.toString());
+        // log.debug(deployments.toString());
 
         // paying no attention to the order (as it's not the point of this test)
         // we assert the two visible objects we've seen
 
         // visibleEvents.expectedBodiesReceivedInAnyOrder(v1, v2);
-
-        visibleEvents.assertIsSatisfied();
+        //wait(10000);
+        visibleEvents.assertIsSatisfied(60000);
     }
 
     // enable generic camel debugging output

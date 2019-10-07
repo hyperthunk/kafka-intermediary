@@ -10,7 +10,7 @@
                 NOTE: we probably want to make use of the KAFKA IDEMPOTENT REPOSITORY
                       to manage consumer offsets (and possibly producer idempotency too?)
             -->
-            <from uri="kafka:events_all?brokers={{kafkaInitHost}}:{{kafkaInitPort}}" />
+            <from uri="kafka:events_all?brokers={{kafkaInitHost}}:{{kafkaInitPort}}&amp;groupId=Main&amp;consumersCount=1&amp;breakOnFirstError=true&amp;autoOffsetReset=earliest" />
             <!-- Region SSL Config
                 see [NOTE: TLS] below...
                                         &amp;
@@ -20,6 +20,7 @@
                                         sslKeyPassword={{sslKeyPassword}}&amp;
                                         securityProtocol=SSL"/>
             -->
+            <to uri="kafka:events_101?brokers={{kafkaInitHost}}:{{kafkaInitPort}}"/>
             <filter>
                 <!--
                 we're expecting some json of the rough form
@@ -35,9 +36,9 @@
                 if an element has a groupId of 101, it will be passed through, otherwise not...
                 we deep search with .. here, but the expression could do whatever really...
                 -->
-                <jsonpath>$..*[?(@.groupID == 101)]</jsonpath>
+                <jsonpath>$..deployment[?(@.groupID == 101)]</jsonpath>
+                <to uri="log:org.spikes?level=DEBUG" />
 
-                <to uri="kafka:events_101?brokers={{kafkaInitHost}}:{{kafkaInitPort}}" />
                 <!--region SSL Config
                                           &amp;
                                           sslKeystoreLocation={{sslKeystoreLocation}}.jks&amp;

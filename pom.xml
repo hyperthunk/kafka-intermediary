@@ -22,7 +22,7 @@
     <confluent.platform.version>5.1.1</confluent.platform.version>
     <shade.plugin.version>3.2.1</shade.plugin.version>
     -->
-
+    <camel.version>2.24.2</camel.version>
     <junit.version>4.12</junit.version>
     <awaitility.version>3.1.6</awaitility.version>
     <testcontainers.version>1.11.2</testcontainers.version>
@@ -62,7 +62,7 @@
       <dependency>
         <groupId>org.apache.camel</groupId>
         <artifactId>camel-spring-boot-dependencies</artifactId>
-        <version>2.24.2</version>
+        <version>${camel.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -110,8 +110,8 @@
     </dependency>
     <dependency>
       <groupId>org.apache.camel</groupId>
-      <artifactId>camel-kafka-starter</artifactId>
-      <!-- use the same version as your Camel core version -->
+      <artifactId>camel-kafka</artifactId>
+      <version>${camel.version}</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
