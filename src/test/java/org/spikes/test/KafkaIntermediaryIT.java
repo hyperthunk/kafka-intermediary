@@ -1,12 +1,9 @@
 package org.spikes.test;
 
-import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.RoutesBuilder;
 import org.apache.camel.builder.RouteBuilder;
-import org.apache.camel.component.kafka.KafkaConstants;
 import org.apache.camel.component.mock.MockEndpoint;
-import org.apache.camel.impl.DefaultExchange;
 import org.apache.camel.test.junit4.CamelTestSupport;
 import org.jboss.logging.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -38,30 +35,6 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
     private static final String TOPIC_101 = "events_101";
     private static final String CONFLUENT_PLATFORM_VERSION = "5.1.1";
     private static final String MOCK_VISIBLE_EVENTS = "mock:visibleEvents";
-
-    private static final String INPUT_JSON =
-            "{events: [" +
-                    "{deployment: {" +
-                          "appid: 'app1'" +
-                        ", groupID: 519" +
-                        ", properties: []}}" +
-                    "{deployment: {" +
-                          "appid:'app2'" +
-                        ", groupID: 318" +
-                        ", properties: []}}" +
-                    "{deployment: {" +
-                          "appid:'app3'" +
-                        ", groupID: 101" +  // this one is valid for route 101
-                        ", properties: []}}" +
-                    "{deployment: {" +
-                          "appid:'app4'" +
-                        ", groupID: 101" +  // this one is valid for route 101
-                        ", properties: []}}" +
-                    "{deployment: {" +
-                          "appid:'app5'" +
-                        ", groupID: 362" +
-                        ", properties: []}}" +
-                    "]}";
 
     // kafka env
     private static TestKafkaContainer kafka;
@@ -143,22 +116,12 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
 
                     from("direct:start")
                             .routeId("test-to-kafka")
-                            // .setBody(constant(INPUT_JSON))
                             .to(getAllEventsURI())
-                            // .to("log:org.spikes?level=DEBUG")
                             .end();
 
                     from(getEvents101URI() +
                             "&groupId=A1&consumersCount=1&breakOnFirstError=true&autoOffsetReset=earliest") // getKafkaConsumerURI()
                             .routeId("test-from-kafka")
-                            .process(exchange -> {
-                                log.info(dumpKafkaDetails(exchange));
-                            })
-                            .log("Message received from Kafka : ${body}")
-                            .log("    on the topic ${headers[kafka.TOPIC]}")
-                            .log("    on the partition ${headers[kafka.PARTITION]}")
-                            .log("    with the offset ${headers[kafka.OFFSET]}")
-                            .log("    with the key ${headers[kafka.KEY]}")
                             .to(MOCK_VISIBLE_EVENTS)
                             .end();
                 }
@@ -172,23 +135,6 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
                 + "', groupID: "
                 + groupId
                 + ", properties: []}}";
-    }
-
-    private String dumpKafkaDetails(Exchange exchange) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Message Received from topic:").append(exchange.getIn().getHeader(KafkaConstants.TOPIC));
-        sb.append("\r\n");
-        sb.append("Message Received from partition:").append(exchange.getIn().getHeader(KafkaConstants.PARTITION));
-        sb.append(" with partition key:").append(exchange.getIn().getHeader(KafkaConstants.PARTITION_KEY));
-        sb.append("\r\n");
-        sb.append("Message offset:").append(exchange.getIn().getHeader(KafkaConstants.OFFSET));
-        sb.append("\r\n");
-        sb.append("Message last record:").append(exchange.getIn().getHeader(KafkaConstants.LAST_RECORD_BEFORE_COMMIT));
-        sb.append("\r\n");
-        sb.append("Message Received:").append(exchange.getIn().getBody());
-        sb.append("\r\n");
-
-        return sb.toString();
     }
 
     @Test
@@ -215,13 +161,11 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
                     .to(getKafkaProducerURI())
                     .send();*/
 
-        // log.debug(deployments.toString());
-
         // paying no attention to the order (as it's not the point of this test)
         // we assert the two visible objects we've seen
 
-        // visibleEvents.expectedBodiesReceivedInAnyOrder(v1, v2);
-        //wait(10000);
+        Object[] matched = bodies.stream().takeWhile(s -> s.contains("groupID: 101")).toArray();
+        visibleEvents.expectedBodiesReceivedInAnyOrder(matched);
         visibleEvents.assertIsSatisfied(60000);
     }
 
