@@ -1,0 +1,87 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="
+         http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+         http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd">
+
+    <camelContext id="GroupMembershipIntermediary" xmlns="http://camel.apache.org/schema/spring">
+        <route id="group-101-membership-filter">
+            <!--
+                NOTE: we probably want to make use of the KAFKA IDEMPOTENT REPOSITORY
+                      to manage consumer offsets (and possibly producer idempotency too?)
+            -->
+            <from uri="kafka:events_all?brokers={{kafkaInitHost}}:{{kafkaInitPort}}" />
+            <!-- Region SSL Config
+                see [NOTE: TLS] below...
+                                        &amp;
+                                        groupId={{kafkaConsumerGroupId}}&amp;
+                                        sslKeystoreLocation={{keystoreLocation}}.jks&amp;
+                                        sslKeystorePassword={{sslKeystorePassword}}&amp;
+                                        sslKeyPassword={{sslKeyPassword}}&amp;
+                                        securityProtocol=SSL"/>
+            -->
+            <filter>
+                <!--
+                we're expecting some json of the rough form
+                [
+                  events: [
+                    deployment: [
+                      appid:   <string>
+                    , groupID: <long>
+                    , properties: [<json-object>]
+                  ]
+                ]
+
+                if an element has a groupId of 101, it will be passed through, otherwise not...
+                we deep search with .. here, but the expression could do whatever really...
+                -->
+                <jsonpath>$..*[?(@.groupID == 101)]</jsonpath>
+
+                <to uri="kafka:events_101?brokers={{kafkaInitHost}}:{{kafkaInitPort}}" />
+                <!--region SSL Config
+                                          &amp;
+                                          sslKeystoreLocation={{sslKeystoreLocation}}.jks&amp;
+                                          sslKeystorePassword={{sslKeystorePassword}}&amp;
+                                          sslKeyPassword={{sslKeyPassword}}&amp;
+                                          securityProtocol=SSL" />
+
+                    [NOTE: TLS]
+                    Any private data such as passwords in the properties file can be encrypted
+                    using https://camel.apache.org/components/latest/jasypt.html, ensuring that
+                    the properties files cannot be read on a production deployment. Some on-boarding
+                    process would need to generate (or provide for upload of public keys for) client
+                    certificates, which process would then need to be informed of what goes into these
+                    properties files, so it could utilise jasypt to encrypt them appropriately.
+
+                    Also various docker frameworks provide support for this, as does ansible. Those might
+                    make for compelling simplifications of the need to encrypt configuration keys...
+
+                    Now... Once SSL encryption + authentication is set up for a client, we can secure the
+                    underlying topics using an ACL that prevents reads from all client applications,
+                    and enable (only!) reads for 'events_101' only to applications that have a certificate
+                    mapping to that group or user id. In the meanwhile, the spring boot application
+                    that is executing THIS route, will have read permissions on the base topics, and write
+                    permissions on the filtered topics.
+
+                    This would essentially work as a Kafka Streams application too, and that would
+                    deal with idempotency, partitioning, and fault tolerance by itself out of the box.
+                    Downside is topology optimisation and cluster config optimisation /may/ end up being
+                    more complex, and overall resource utilisation likely to be higher both for streaming
+                    intermediary applications, and for brokers.
+
+                    See following links for some background...
+
+                    https://medium.com/netflix-techblog/kafka-inside-keystone-pipeline-dd5aeabaf6bb
+                    https://engineeringblog.yelp.com/2016/07/billions-of-messages-a-day-yelps-real-time-data-pipeline.html
+                    https://www.confluent.io/blog/optimizing-kafka-streams-applications
+                    http://aseigneurin.github.io/2017/08/04/why-kafka-streams-didnt-work-for-us-part-3.html
+                    https://www.slideshare.net/GuozhangWang/performance-analysis-and-optimizations-for-kafka-streams-applications-145539130
+                    https://kafka.apache.org/23/documentation/streams/architecture
+                    https://engineering.linecorp.com/ja/blog/adventures-of-using-kafka-streams/
+
+                -->
+            </filter>
+        </route>
+    </camelContext>
+
+</beans>

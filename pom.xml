@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-                                                                <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
   <modelVersion>4.0.0</modelVersion>
@@ -15,7 +16,37 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <spring.boot-version>2.1.4.RELEASE</spring.boot-version>
+
+    <!--
+    <kafka.apis.version>2.1.1</kafka.apis.version>
+    <confluent.platform.version>5.1.1</confluent.platform.version>
+    <shade.plugin.version>3.2.1</shade.plugin.version>
+    -->
+
+    <junit.version>4.12</junit.version>
+    <awaitility.version>3.1.6</awaitility.version>
+    <testcontainers.version>1.11.2</testcontainers.version>
+    <!-- <wiremock.version>2.22.0</wiremock.version> -->
+    <!--<rest-assured.version>3.0.1</rest-assured.version>-->
+    <!--<jackson.version>2.9.8</jackson.version>-->
+
+    <failsafe.plugin.version>3.0.0-M3</failsafe.plugin.version>
+    <skipIntegrationTests>true</skipIntegrationTests>
   </properties>
+
+  <repositories>
+    <repository>
+      <id>confluent</id>
+      <url>http://packages.confluent.io/maven/</url>
+    </repository>
+  </repositories>
+  <pluginRepositories>
+    <pluginRepository>
+      <id>confluent</id>
+      <name>Confluent</name>
+      <url>http://packages.confluent.io/maven/</url>
+    </pluginRepository>
+  </pluginRepositories>
 
   <dependencyManagement>
     <dependencies>
@@ -69,6 +100,16 @@
       <groupId>org.apache.camel</groupId>
       <artifactId>camel-stream-starter</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-jackson-starter</artifactId>
+      <version>2.24.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-kafka-starter</artifactId>
+      <!-- use the same version as your Camel core version -->
+    </dependency>
 
     <!-- Test -->
     <dependency>
@@ -81,10 +122,38 @@
       <artifactId>camel-test-spring</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>kafka</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <version>${awaitility.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!--
+      <dependency>
+        <groupId>io.rest-assured</groupId>
+        <artifactId>rest-assured</artifactId>
+        <version>${rest-assured.version}</version>
+        <scope>test</scope>
+      </dependency>
+    -->
   </dependencies>
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <source>10</source>
+          <target>10</target>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
@@ -97,6 +166,29 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>${failsafe.plugin.version}</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <skipITs>${skipIntegrationTests}</skipITs>
+        </configuration>
+      </plugin><plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-compiler-plugin</artifactId>
+      <configuration>
+        <source>8</source>
+        <target>8</target>
+      </configuration>
+    </plugin>
     </plugins>
   </build>
 
