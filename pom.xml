@@ -31,6 +31,7 @@
     <!--<jackson.version>2.9.8</jackson.version>-->
 
     <failsafe.plugin.version>3.0.0-M3</failsafe.plugin.version>
+    <surefire.plugin.version>3.0.0-M3</surefire.plugin.version>
     <skipIntegrationTests>true</skipIntegrationTests>
   </properties>
 
@@ -180,6 +181,11 @@
             </goals>
           </execution>
         </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.plugin.version}</version>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

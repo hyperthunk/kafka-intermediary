@@ -206,7 +206,7 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
 
         // we expect our mock endpoint to receive 2 message exchanges
         visibleEvents.expectedMessageCount(3);
-        
+
                     /*.withProcessor(
                             exchange -> {
                                 exchange.getOut().setHeader(KafkaConstants.KEY, "deployments");
