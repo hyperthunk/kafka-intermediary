@@ -5,13 +5,12 @@ import org.apache.camel.RoutesBuilder;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.test.junit4.CamelTestSupport;
-import org.jetbrains.annotations.NotNull;
 import org.junit.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 
 public class CamelRouteConfigTests extends CamelTestSupport {
+
     @Override
     protected RoutesBuilder createRouteBuilder() throws Exception {
         return new RouteBuilder() {
@@ -23,7 +22,7 @@ public class CamelRouteConfigTests extends CamelTestSupport {
 
                 from("direct:start")
                         .routeId("test-filter-101")
-                        .filter(jsonpath("$..*[?(@.groupID == 101)]"))
+                        .filter(jsonpath(TestData.GROUPID_FILTER_EXPR))
                         .to("mock:filtered")
                         .end();
             }
@@ -33,7 +32,7 @@ public class CamelRouteConfigTests extends CamelTestSupport {
     @Test
     public void givenValidGroupIdFilterShouldReturnBody() throws InterruptedException {
         final MockEndpoint mock = context().getEndpoint("mock:filtered", MockEndpoint.class);
-        final String messageBody = makeBody("app2", "101");
+        final String messageBody = TestData.makeBody("app2", "101");
 
         mock.expectedMessageCount(1);
         mock.expectedBodiesReceivedInAnyOrder(messageBody);
@@ -47,11 +46,11 @@ public class CamelRouteConfigTests extends CamelTestSupport {
     public void givenInvalidGroupIdFilterShouldNotReturnBody() throws InterruptedException {
         final MockEndpoint mock = context().getEndpoint("mock:filtered", MockEndpoint.class);
         final List<String> bodies =
-                List.of( makeBody("app1", "101")
-                       , makeBody("app2", "352")
-                       , makeBody("app3", "614")
-                       , makeBody("app4", "101")
-                       , makeBody("app5", "101"));
+                List.of( TestData.makeBody("app1", "101")
+                       , TestData.makeBody("app2", "352")
+                       , TestData.makeBody("app3", "614")
+                       , TestData.makeBody("app4", "101")
+                       , TestData.makeBody("app5", "101"));
 
         bodies.forEach(b -> { template().sendBody("direct:start", b); });
 
@@ -59,12 +58,4 @@ public class CamelRouteConfigTests extends CamelTestSupport {
         mock.assertIsSatisfied();
     }
 
-    @NotNull
-    private String makeBody(final String appName, final String groupId) {
-        return "{deployment: {appid:'"
-                + appName
-                + "', groupID: "
-                + groupId
-                + ", properties: []}}";
-    }
 }

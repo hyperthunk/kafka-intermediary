@@ -19,22 +19,21 @@ import org.testcontainers.containers.KafkaContainer;
 import java.util.List;
 import java.util.Properties;
 
+import static org.spikes.test.TestData.makeBody;
+
 public class KafkaIntermediaryIT extends CamelTestSupport {
 
     // because the implementation of 'getFirstMappedPort' in KafkaContainer
     // is broken in respect of docker implementations on some platforms... :/
     private static class TestKafkaContainer extends KafkaContainer {
-        public TestKafkaContainer(String confluentPlatformVersion) {
+        TestKafkaContainer(String confluentPlatformVersion) {
             super(confluentPlatformVersion);
         }
 
-        public Integer getBrokerPort() { return proxy.getFirstMappedPort(); }
+        Integer getBrokerPort() { return proxy.getFirstMappedPort(); }
     }
 
-    private static final String TOPIC_ALL = "events_all";
-    private static final String TOPIC_101 = "events_101";
     private static final String CONFLUENT_PLATFORM_VERSION = "5.1.1";
-    private static final String MOCK_VISIBLE_EVENTS = "mock:visibleEvents";
 
     // kafka env
     private static TestKafkaContainer kafka;
@@ -56,11 +55,12 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
 
     private static void startIntermediary() {
         final String bootstrapServers = kafka.getBootstrapServers();
-        Logger.getLogger(KafkaIntermediaryIT.class).debug("[IT] Kafka bootstrap brokers " + bootstrapServers);
+        Logger.getLogger(KafkaIntermediaryIT.class).debug(
+                "[IT] Kafka bootstrap brokers " + bootstrapServers);
         final String host = kafka.getContainerIpAddress();
         final Integer port = kafka.getBrokerPort();
-        Logger.getLogger(KafkaIntermediaryIT.class).debug("[IT] Kafka bootstrap addr=" + host +
-                                                          ", port=" + port.toString());
+        Logger.getLogger(KafkaIntermediaryIT.class).debug(
+                "[IT] Kafka bootstrap addr=" + host + ", port=" + port.toString());
         SpringApplication application = new SpringApplication(MySpringBootApplication.class);
         Properties properties = new Properties();
         properties.put("kafkaInitHost", host);
@@ -70,8 +70,8 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
     }
 
     private static void createTopics() {
-        createTopic(TOPIC_ALL);
-        createTopic(TOPIC_101);
+        createTopic(TestData.TOPIC_ALL);
+        createTopic(TestData.TOPIC_101);
     }
 
     private static void createTopic(final String topic) {
@@ -99,7 +99,7 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
 
     @NotNull
     private String getAllEventsURI() {
-        return "kafka:" + TOPIC_ALL + "?brokers=" + kafka.getBootstrapServers();
+        return "kafka:" + TestData.TOPIC_ALL + "?brokers=" + kafka.getBootstrapServers();
     }
 
     // we provide a camel route for this test, which will consume data from
@@ -122,24 +122,15 @@ public class KafkaIntermediaryIT extends CamelTestSupport {
                     from(getEvents101URI() +
                             "&groupId=A1&consumersCount=1&breakOnFirstError=true&autoOffsetReset=earliest") // getKafkaConsumerURI()
                             .routeId("test-from-kafka")
-                            .to(MOCK_VISIBLE_EVENTS)
+                            .to(TestData.MOCK_VISIBLE_EVENTS)
                             .end();
                 }
             };
     }
 
-    @NotNull
-    private String makeBody(final String appName, final String groupId) {
-        return "{deployment: {appid:'"
-                + appName
-                + "', groupID: "
-                + groupId
-                + ", properties: []}}";
-    }
-
     @Test
     public void givenThreeInFivePrivateMessagesTwoAreVisible() throws InterruptedException {
-        MockEndpoint visibleEvents = context().getEndpoint(MOCK_VISIBLE_EVENTS, MockEndpoint.class);
+        MockEndpoint visibleEvents = context().getEndpoint(TestData.MOCK_VISIBLE_EVENTS, MockEndpoint.class);
 
         final List<String> bodies =
                 List.of(  makeBody("app1", "101")

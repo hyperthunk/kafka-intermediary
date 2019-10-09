@@ -7,10 +7,15 @@
 
   <groupId>org.spikes</groupId>
   <artifactId>kafka-intermediary</artifactId>
-  <packaging>jar</packaging>
+  <packaging>pom</packaging>
   <version>0.1-SNAPSHOT</version>
+  <!--
+  <modules>
+    <module>kafka-intermediary-testclient</module>
+  </modules>
+  -->
 
-  <name>A Camel Spring Boot Route</name>
+  <name>Multi-Tenant Kafka Dynamic Topic Filtering (Camel)</name>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -121,6 +126,12 @@
       <!-- use the same version as your Camel core version -->
       <scope>provided</scope>
     </dependency>
+    <dependency>
+      <groupId>org.apache.camel</groupId>
+      <artifactId>camel-undertow</artifactId>
+      <version>${camel.version}</version>
+      <scope>provided</scope>
+    </dependency>
 
     <!-- Test -->
     <dependency>
@@ -150,6 +161,12 @@
       <version>${awaitility.version}</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-exec</artifactId>
+      <version>1.3</version>
+    </dependency>
+
     <!--
       <dependency>
         <groupId>io.rest-assured</groupId>
@@ -203,6 +220,10 @@
           <additionalClasspathElements>
             <additionalClasspathElement>${basedir}/target/classes</additionalClasspathElement>
           </additionalClasspathElements>
+          <includes>
+            <!--<include>**/*IT.java</include>-->
+            <include>KafkaAclUsageIT.java</include>
+          </includes>
           <skipITs>${skipIntegrationTests}</skipITs>
         </configuration>
       </plugin><plugin>

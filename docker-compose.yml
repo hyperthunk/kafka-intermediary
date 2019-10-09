@@ -1,53 +1,149 @@
-version: '3'
+version: "2.2"
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:5.1.1
-    ports:
-      - 2181:2181
+    image: confluentinc/cp-zookeeper:5.3.1
+    restart: always
+    hostname: zookeeper
+    container_name: zookeeper
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-
-  kafka:
-    image: confluentinc/cp-kafka:5.1.1
-    ports:
-      - 9092:9092
-      - 29092:29092
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_CLIENT_PORT: "2181"
+      ZOOKEEPER_TICK_TIME: "2000"
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/secrets/zookeeper_jaas.conf
+                  -Dzookeeper.authProvider.1=org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+                  -DrequireClientAuthScheme=sasl
     volumes:
-      - ./src/test/resources:/etc/kafka/secrets
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,SSL://localhost:29092
-      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.auth.SimpleAclAuthorizer
-      KAFKA_SSL_KEYSTORE_FILENAME: kafka.server.keystore.jks
-      KAFKA_SSL_KEYSTORE_CREDENTIALS: password
-      KAFKA_SSL_KEY_CREDENTIALS: password
-      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.server.truststore.jks
-      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: password
-      KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: " "
-      KAFKA_SSL_CLIENT_AUTH: required
-      KAFKA_SECURITY_INTER_BROKER_PROTOCOL: SSL
-    depends_on:
-      - zookeeper
+      - ./scripts/security:/etc/kafka/secrets
+    ports:
+      - "2181:2181"
 
-  kafka-topics-setup:
-    image: confluentinc/cp-kafka:5.1.1
-    hostname: kafka-topics-setup
-    container_name: kafka-topics-setup
+  kafka1:
+    image: confluentinc/cp-enterprise-kafka:5.3.1
+    hostname: kafka1
+    container_name: kafka1
     depends_on:
-      - kafka
       - zookeeper
-    command: "bash -c 'echo Waiting for Kafka to be ready... && \
-                 cub kafka-ready -b kafka:9092 1 30 && \
-                 kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 1 --replication-factor 1 --topic events_all && \
-                 kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 1 --replication-factor 1 --topic events_101 && \
-                 && \
-                 sleep 30'"
+    volumes:
+      - ./scripts/security:/etc/kafka/secrets
+    ports:
+      - "9091:9091"
+      - "29091:29091"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: EXTERNAL:SSL,INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://kafka1:9091,INTERNAL://kafka1:29091
+      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.auth.SimpleAclAuthorizer
+      KAFKA_SUPER_USERS: User:adminclient;User:broker
+      KAFKA_LOG4J_LOGGERS: "kafka.authorizer.logger=INFO"
+      KAFKA_METRIC_REPORTERS: "io.confluent.metrics.reporter.ConfluentMetricsReporter"
+      KAFKA_BROKER_ID: 1
+      KAFKA_BROKER_RACK: "r1"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      # To avoid race condition with control-center
+      CONFLUENT_METRICS_REPORTER_TOPIC_CREATE: "false"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_JMX_PORT: 9991
+      # KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      # KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka1.keystore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka1_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: kafka1_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka1.truststore.jks
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: kafka1_truststore_creds
+      # enables 2-way authentication
+      KAFKA_SSL_CLIENT_AUTH: "required"
+      KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: "HTTPS"
+      KAFKA_ZOOKEEPER_SET_ACL: "true"
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/secrets/broker_jaas.conf
+
+  kafka2:
+    image: confluentinc/cp-enterprise-kafka:5.3.1
+    hostname: kafka2
+    container_name: kafka2
+    depends_on:
+      - zookeeper
+    volumes:
+      - ./scripts/security:/etc/kafka/secrets
+    ports:
+      - "9090:9090"
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+	  # The camel test client will connect here
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: EXTERNAL:SSL,INTERNAL:PLAINTEXT,TEST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://kafka2:9092,INTERNAL://kafka2:29092,TEST://kafka:9090
+      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.auth.SimpleAclAuthorizer
+      KAFKA_SUPER_USERS: User:adminclient;User:broker
+      KAFKA_LOG4J_LOGGERS: "kafka.authorizer.logger=INFO"
+      KAFKA_BROKER_ID: 2
+      KAFKA_BROKER_RACK: "r1"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      # To avoid race condition with control-center
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_JMX_PORT: 9991
+	  # SASL Plain is _NOT_ the same as PLAINTEXT
+	  # see https://docs.confluent.io/current/kafka/authentication_sasl/authentication_sasl_plain.html
+      # KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      # KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka2.keystore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka2_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: kafka2_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka2.truststore.jks
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: kafka2_truststore_creds
+      # enables 2-way authentication
+      KAFKA_SSL_CLIENT_AUTH: "required"
+      KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: "HTTPS"
+      KAFKA_ZOOKEEPER_SET_ACL: "true"
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/secrets/broker_jaas.conf
+
+  kafka-client:
+    image: confluentinc/cp-enterprise-kafka:5.3.1
+    hostname: kafka-admin-client
+    container_name: kafka-admin-client
+    cpus: 0.4
+    depends_on:
+      - kafka1
+      - kafka2
+    volumes:
+      - ./scripts/security:/etc/kafka/secrets
+    # We defined a dependency on "kafka", but `depends_on` will NOT wait for the
+    # dependencies to be "ready" before starting the "kafka-client"
+    # container;  it waits only until the dependencies have started.  Hence we
+    # must control startup order more explicitly.
+    # See https://docs.docker.com/compose/startup-order/
+    command: "bash -c -a 'echo Waiting for Kafka to be ready... && \
+                       /etc/confluent/docker/configure && \
+                       cub kafka-ready -b kafka1:9091 1 60 --config /etc/kafka/kafka.properties && \
+                       cub kafka-ready -b kafka2:9092 1 60 --config /etc/kafka/kafka.properties && \
+                       sleep 5 && \
+                       kafka-topics --zookeeper zookeeper:2181 --topic events_all --create --replication-factor 2 --partitions 2 && \
+                       kafka-topics --zookeeper zookeeper:2181 --topic events_101 --create --replication-factor 2 --partitions 2 && \
+					   kafka-acls --authorizer-properties zookeeper.connect=localhost:2181 --add --deny-principle User:'*' --allow-principal User:'testclient' --operation ALL --topic '*' --cluster && \
+					   kafka-acls --authorizer-properties zookeeper.connect=localhost:2181 --add --deny-principle User:'*' --allow-principal User:'client1' --operation READ --topic 'events_all' --cluster && \
+					   kafka-acls --authorizer-properties zookeeper.connect=localhost:2181 --add --deny-principle User:'*' --allow-principal User:'client1' --operation WRITE --topic 'events_101' --cluster && \					   
+					   kafka-acls --authorizer-properties zookeeper.connect=localhost:2181 --add --deny-principle User:'*' --allow-principal User:'client2' --operation READ --topic 'events_101' --cluster'"
     environment:
       # The following settings are listed here only to satisfy the image's requirements.
       # We override the image's `command` anyways, hence this container will not start a broker.
       KAFKA_BROKER_ID: ignored
       KAFKA_ZOOKEEPER_CONNECT: ignored
+      KAFKA_ADVERTISED_LISTENERS: ignored
+      KAFKA_SECURITY_PROTOCOL: SASL_SSL
+      KAFKA_SASL_JAAS_CONFIG: "org.apache.kafka.common.security.plain.PlainLoginModule required \
+        username=\"adminclient\" \
+        password=\"client-secret\";"
+      KAFKA_SASL_MECHANISM: PLAIN
+      KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/kafka.adminclient.truststore.jks
+      KAFKA_SSL_TRUSTSTORE_PASSWORD: confluent
+      KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.adminclient.keystore.jks
+      KAFKA_SSL_KEYSTORE_PASSWORD: password
+      KAFKA_SSL_KEY_PASSWORD: password
+      KAFKA_ZOOKEEPER_SET_ACL: "true"
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/secrets/broker_jaas.conf
+    ports:
+      - "7073:7073"
